@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
- Returns a Microsoft Graph Reporting API report for an Office365 Tenant
+ Returns a Microsoft Graph Reporting API report for an Office365 Tenant 
  
 .DESCRIPTION
  Using an native App registered in Azure AD and an authorized Office 365 admin this script calls the Microsoft Graph Reporting API
