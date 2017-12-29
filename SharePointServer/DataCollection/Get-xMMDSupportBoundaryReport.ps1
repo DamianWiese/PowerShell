@@ -53,18 +53,13 @@ $maxTermSets = 1000
 $maxTermsInSet = 30000
 $maxItemsInStore = 1000000
 
-#Set Boundary Variables for testing
-#$maxTermSets = 0
-#$maxTermsInSet = 0
-#$maxItemsInStore = 0
-
 #Fixup output folder format
 if($outputfolder -and !$OutputFolder.EndsWith("\"))
 {
     $OutputFolder = $OutputFolder+"\"
 }
 
-#Get regerence to Central Administration Site Collection
+#Get reference to Central Administration Site Collection
 $ca = (Get-SPWebApplication -IncludeCentralAdministration | ? { $_.IsAdministrationWebApplication -eq $true}).Sites[0]
 
 #Generate MMD session using Central Admin Site Collection
