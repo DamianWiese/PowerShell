@@ -15,7 +15,6 @@ $cred = Get-Credential
     -RedirectURI "urn:foo" `
     -WorkLoad OneDrive `
     -ReportType getOneDriveUsageStorage `
-    -Cred $cred `
     -Period D180 `
     -Date 2017-10-26 `
     -Verbose
@@ -44,9 +43,6 @@ getYammerGroupsActivityUserDetail
 .PARAMETER Period
 Time period for the report in days. Allowed values: D7,D30,D90,D180
 Period is not supported for reports starting with getOffice365Activations and will be ignored
-
-.PARAMETER Credential
-PSCredential object for a with access to view reports. If this is not provided the user will be prompted to enter their credentials
 
 .PARAMETER Date
 Specifies the day to a view of the users that performed an activity on that day. Must have a format of YYYY-MM-DD.
@@ -96,7 +92,13 @@ getMailboxUsageUserDetail            --> getMailboxUsageDetail
 getOneDriveUsageUserDetail           --> getOneDriveUsageAccountDetail
 getSharePointSiteUsageUserDetail     --> getSharePointSiteUsageDetail
 getYammerGroupsActivityUserDetail    --> getYammerGroupsActivityDetail
-getOffice365GroupsActivityUserDetail --> getOffice365GroupsActivityDetail 
+getOffice365GroupsActivityUserDetail --> getOffice365GroupsActivityDetail
+
+## 1/2/1018 ##
+1) Updated to support ADAL V3, which now requires interactive credential prompt
+2) Removed credential parameter since we always prompt with ADAL V3
+
+ 
 
 #>
 [CmdletBinding()]
@@ -185,118 +187,120 @@ Begin {
 #Start the loading of the rest of the script
 Process{
 
-    #If the credential object is empty, prompt the user for credentials
-    if(!$Credential) {$Credential = Get-Credential}
-    
-    function Get-AuthToken
-    {
-    <#
-    .SYNOPSIS
-     Gets an OAuth token for use with the Microsoft Graph API
+function Get-AuthTokenWithCreds
+{
+<#
+.SYNOPSIS
+Gets an OAuth token for use with the Microsoft Graph API using ADAL v3.17.3
  
-    .DESCRIPTION
-     Gets an OAuth token for use with the Microsoft Graph API
+.DESCRIPTION
+Gets an OAuth token for use with the Microsoft Graph API using ADAL v3.17.3
 
-    .EXAMPLE
-     Get-AuthToken -TenantName "contoso.onmicrosoft.com" -clientId "74f0e6c8-0a8e-4a9c-9e0e-4c8223013eb9" -redirecturi "urn:ietf:wg:oauth:2.0:oob" -resourceAppIdURI "https://graph.microsoft.com"
+.EXAMPLE
+Get-AuthToken `
+-TenantName "contoso" `
+-clientId "74f0e6c8-0a8e-4a9c-9e0e-4c8223013eb9" `
+-redirecturi "urn:ietf:wg:oauth:2.0:oob" `
+-resourceAppIdURI "https://graph.microsoft.com"
  
-    .PARAMETER TentantName
-    Tenant name in the format <tenantname>.onmicrosoft.com
+.PARAMETER TentantName
+Tenant name in the format
 
-    .PARAMETER clientID
-    The clientID or AppID of the native app created in AzureAD to grant access to the reporting API
+.PARAMETER clientID
+The clientID or AppID of the native app created in AzureAD to grant access to the reporting API
 
-    .Parameter redirecturi
-    The replyURL of the native app created in AzureAD to grant access to the reporting API
+.Parameter redirecturi
+The replyURL of the native app created in AzureAD to grant access to the reporting API
 
-    .Parameter resourceAppIDURI
-    protocol and hostname for the endpoint you are accessing. For the Graph API enter "https://graph.microsoft.com"
+.Parameter resourceAppIDURI
+protocol and hostname for the endpoint you are accessing. For the Graph API enter "https://graph.microsoft.com"
  
-    .NOTES
-    Inital authentication sample from:
-    https://blogs.technet.microsoft.com/paulomarques/2016/03/21/working-with-azure-active-directory-graph-api-from-powershell/
+.NOTES
+Supports Azure Active Direction Authentication Library V3.17.3
 
-    #>
-           param
-           (
-                  [Parameter(Mandatory=$true)]
-                  $TenantName,
+#>
+
+### Version History
+# 1/2/2018 - Created to handle ADAL V3
+
+<# RESOURCES
+https://www.nuget.org/packages/Microsoft.IdentityModel.Clients.ActiveDirectory/3.17.3
+
+#>
+
+        param
+        (
+                [Parameter(Mandatory=$true)]
+                $TenantName,
               
-                  [Parameter(Mandatory=$true)]
-                  $clientId,
+                [Parameter(Mandatory=$true)]
+                $clientId,
               
-                  [Parameter(Mandatory=$true)]
-                  $redirecturi,
+                [Parameter(Mandatory=$true)]
+                $redirecturi,
 
-                  [Parameter(Mandatory=$true)]
-                  $resourceAppIdURI
-           )
+                [Parameter(Mandatory=$true)]
+                $resourceAppIdURI
+        )
+        
+        #Build the path for the DLLs that we need
+        $libraryfolder = "C:\Program Files\PackageManagement\NuGet\Packages\Microsoft.IdentityModel.Clients.ActiveDirectory.3.17.3\lib\net45"
+        $adal = "{0}\Microsoft.IdentityModel.Clients.ActiveDirectory.dll" -f $libraryfolder
 
-            #Import the MSOnline module so we can lookup the directory for Microsoft.IdentityModel.Clients.ActiveDirectory.dll and Microsoft.IdentityModel.Clients.ActiveDirectory.WindowsForms.dll
-            #MSOnline module documentation: https://www.powershellgallery.com/packages/MSOnline/1.1.166.0
-            Try
-                {
-                    Write-Debug "Importing MSONline Module for ADAL assemblies"
-                    Import-Module MSOnline -ErrorAction Stop
-                }
-            Catch [System.IO.FileNotFoundException]
-                {
-                    Write-Warning "The module MSOnline is not installed.`nPlease run Install-Module MSOnline from an elevated window to install it from the PowerShell Gallery"
-                    Throw "MSOnline module not installed"
-                }
-            #Get the module folder so we can load the DLLs we want
-            $modulebase = (Get-Module MSONline | Sort Version -Descending | Select -First 1).ModuleBase
-            $adal = "{0}\Microsoft.IdentityModel.Clients.ActiveDirectory.dll" -f $modulebase
-            $adalforms = "{0}\Microsoft.IdentityModel.Clients.ActiveDirectory.WindowsForms.dll" -f $modulebase
-
-            #Attempt to load the assemblies. Without these we cannot continue so we need the user to stop and take an action
-            Try
-                {
-                    [System.Reflection.Assembly]::LoadFrom($adal) | Out-Null
-                    [System.Reflection.Assembly]::LoadFrom($adalforms) | Out-Null
-                }
-            Catch
-                {
-                    #MSOnline Version 1.0 does not contain the DLLs that we need, a minimum version of 1.1.166.0 is required
-                    Write-Warning "Unable to load ADAL assemblies.`nUpdate the MSOnline module by running Install-Module MSOnline -Force -AllowClobber"
-                    Throw $error[0]
-                }
+        #Attempt to load the assemblies. Without these we cannot continue so we need the user to stop and take an action
+        Try
+            {
+                [System.Reflection.Assembly]::LoadFrom($adal) | Out-Null
+            }
+        Catch
+            {
+                #ADAL NuGet Package is not installed, please open an elevated PowerSHell prompt and run the following
+                Write-Warning "Unable to load ADAL assemblies"
+                Write-Host "Please open an elevated PowerSHell prompt and run the following"
+                Write-Host "Install-PackageProvider -Name Nuget"  -ForegroundColor Cyan
+                Write-Host "Register-PackageSource -Name Nuget -Location https://www.nuget.org/api/v2 -ProviderName Nuget" -ForegroundColor Cyan
+                Write-Host "Install-Package -Source Nuget -Name Microsoft.IdentityModel.Clients.ActiveDirectory -RequiredVersion 3.17.3" -ForegroundColor Cyan
+            }
        
-           #Build the logon URL with the tenant name
-           $authority = "https://login.windows.net/$TenantName"
-           Write-Verbose "Logon Authority: $authority"
-       
-           #Build the auth context and get the result
-           Write-Verbose "Creating AuthContext"
-           $authContext = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext" -ArgumentList $authority
-           Write-Verbose "Creating AD UserCredential Object"
-           $AdUserCred = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.UserCredential" -ArgumentList $Credential.username, $Credential.Password
-            Try
-                {
-                    Write-Verbose "Attempting passive authentication"
-                    $authResult = $authContext.AcquireToken($resourceAppIdURI, $clientId,$AdUserCred)
-                }
-            Catch [System.Management.Automation.MethodInvocationException]
-                {
-                    #The first that the the user runs this, they must open an interactive window to grant permissions to the app
-                    If ($error[0].Exception.Message -like "*Send an interactive authorization request for this user and resource*")
-                        {
-                            Write-Warning "The app has not been granted permissions by the user. Opening an interactive prompt to grant permissions"
-                            $authResult = $authContext.AcquireToken($resourceAppIdURI, $clientId,$redirectUri, "Always") #Always prompt for user credentials so we don't use Windows Integrated Auth
-                        }
-                    Else
-                        {
-                            Throw
-                        }
-                }
+        #Build the logon URL with the tenant name
+        $authority = "https://login.microsoftonline.com/$TenantName.onmicrosoft.com"
+        Write-Verbose "Logon Authority: $authority"
+
+        #Create platform parameters to prompt for user credentials each time
+        $PlaformParameter = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.PlatformParameters" -ArgumentList "Always"
+        
+        Try
+            {
+                #Build the auth context and get the result
+                Write-Verbose "Creating AuthContext"
+                $authContext = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext" -ArgumentList $authority
+                $authResult = $authContext.AcquireTokenAsync($resourceAppIdURI, $clientId, $redirecturi, $PlaformParameter)
+
+            }
+        Catch [System.Management.Automation.MethodInvocationException]
+            {
+                #The first that the the user runs this, they must open an interactive window to grant permissions to the app
+                If ($error[0].Exception.Message -like "*Send an interactive authorization request for this user and resource*")
+                    {
+                        Write-Warning "The app has not been granted permissions by the user. Opening an interactive prompt to grant permissions"
+                        $authResult = $authContext.AcquireToken($resourceAppIdURI, $clientId,$redirectUri, "Always") #Always prompt for user credentials so we don't use Windows Integrated Auth
+                    }
+                Else
+                    {
+                        Throw
+                    }
+            }
            
        
-           #Return the authentication token
-           return $authResult
-    }
+        #Return the authentication token
+        #Note this returns the entire result object, to get just the token you will need to use $authResult.Result
+        return $authResult
+}
+
+
 
     #Getting the authorization token
-    $token = Get-AuthToken -TenantName $TenantName -clientId $ClientID -redirecturi $RedirectURI -resourceAppIdURI "https://graph.microsoft.com"
+    $token = (Get-AuthTokenWithCreds -TenantName $TenantName -clientId $ClientID -redirecturi $RedirectURI -resourceAppIdURI "https://graph.microsoft.com").result
  
     #Build REST API header with authorization token
     $authHeader = @{
@@ -327,11 +331,11 @@ Process{
     Write-Verbose "Parameter set is: $parameterset"
 
     #Build the request URL and invoke
-    $uri = "https://graph.microsoft.com/beta/reports/{0}({1})/content" -f $report, $parameterset
+    $uri = "https://graph.microsoft.com/v1.0/reports/{0}({1})/content" -f $report, $parameterset
+    #$uri = "https://graph.microsoft.com/v1.0/reports/{0}({1})/" -f $report, $parameterset
     Write-Host $uri
     Write-Host "Retrieving Report $report, please wait" -ForegroundColor Green
     $result = Invoke-RestMethod -Uri $uri –Headers $authHeader –Method Get
-               
     
     #Convert the stream result to an array
     $resultarray = ConvertFrom-Csv -InputObject $result
@@ -342,4 +346,3 @@ End{
     Return $resultarray
    }
 
- 
