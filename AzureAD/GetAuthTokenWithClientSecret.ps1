@@ -1,4 +1,4 @@
-﻿function Get-AuthTokenWithCreds
+﻿function Get-AuthTokenWithClientSecret
 {
 <#
 .SYNOPSIS
@@ -8,20 +8,20 @@ Gets an OAuth token for use with the Microsoft Graph API using ADAL v3.17.3
 Gets an OAuth token for use with the Microsoft Graph API using ADAL v3.17.3
 
 .EXAMPLE
-Get-AuthToken `
+GetAuthTokenWithClientSecret.ps1 `
 -TenantName "contoso" `
 -clientId "74f0e6c8-0a8e-4a9c-9e0e-4c8223013eb9" `
--redirecturi "urn:ietf:wg:oauth:2.0:oob" `
+-clientSecret ""
 -resourceAppIdURI "https://graph.microsoft.com"
  
 .PARAMETER TentantName
 Tenant name in the format
 
 .PARAMETER clientID
-The clientID or AppID of the native app created in AzureAD to grant access to the reporting API
+The clientID or AppID of the web app created in AzureAD to grant access to the reporting API
 
-.Parameter redirecturi
-The replyURL of the native app created in AzureAD to grant access to the reporting API
+.Parameter clientsecret
+The key/client secret of the web app created in AzureAD to grant access to the reporting API
 
 .Parameter resourceAppIDURI
 protocol and hostname for the endpoint you are accessing. For the Graph API enter "https://graph.microsoft.com"
@@ -32,7 +32,7 @@ Supports Azure Active Direction Authentication Library V3.17.3
 #>
 
 ### Version History
-# 1/2/2018 - Created to handle ADAL V3
+# 1/3/2018 - Created to handle ADAL V3, thank you Zak Belmaachi for assistance with client secret authentication!
 
 <# RESOURCES
 https://www.nuget.org/packages/Microsoft.IdentityModel.Clients.ActiveDirectory/3.17.3
@@ -49,7 +49,7 @@ https://docs.microsoft.com/en-us/dotnet/api/microsoft.identitymodel.clients.acti
                 $clientId,
               
                 [Parameter(Mandatory=$true)]
-                $redirecturi,
+                $clientsecret,
 
                 [Parameter(Mandatory=$true)]
                 $resourceAppIdURI
@@ -78,32 +78,15 @@ https://docs.microsoft.com/en-us/dotnet/api/microsoft.identitymodel.clients.acti
         $authority = "https://login.microsoftonline.com/$TenantName.onmicrosoft.com"
         Write-Verbose "Logon Authority: $authority"
 
-        #Create platform parameters to prompt for user credentials each time
-        $PlaformParameter = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.PlatformParameters" -ArgumentList "Always"
-        
-        Try
-            {
-                #Build the auth context and get the result
-                Write-Verbose "Creating AuthContext"
-                $authContext = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext" -ArgumentList $authority
-                $authResult = $authContext.AcquireTokenAsync($resourceAppIdURI, $clientId, $redirecturi, $PlaformParameter)
 
-            }
-        Catch [System.Management.Automation.MethodInvocationException]
-            {
-                #The first that the the user runs this, they must open an interactive window to grant permissions to the app
-                If ($error[0].Exception.Message -like "*Send an interactive authorization request for this user and resource*")
-                    {
-                        Write-Warning "The app has not been granted permissions by the user. Opening an interactive prompt to grant permissions"
-                        $authResult = $authContext.AcquireToken($resourceAppIdURI, $clientId,$redirectUri, "Always") #Always prompt for user credentials so we don't use Windows Integrated Auth
-                    }
-                Else
-                    {
-                        Throw
-                    }
-            }
-           
-       
+        #Build the auth context and get the result
+        Write-Verbose "Creating AuthContext"
+        $authContext = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext" -ArgumentList $authority
+        Write-Verbose "Creating AD UserCredential Object"
+        $clientCredential = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.ClientCredential" -ArgumentList $clientId, $clientSecret
+
+        $authResult = $authContext.AcquireTokenAsync($resourceAppIdURI, $clientCredential)
+
         #Return the authentication token
         #Note this returns the entire result object, to get just the token you will need to use $authResult.Result
         return $authResult
