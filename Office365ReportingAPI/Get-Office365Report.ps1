@@ -6,19 +6,28 @@
  Using an native App registered in Azure AD and an authorized Office 365 admin this script calls the Microsoft Graph Reporting API
  and returns the desired report type as a system.array object. The types of reports available are documented at https://developer.microsoft.com/en-us/graph/docs/api-reference/beta/resources/report
 
-.Example
-$cred = Get-Credential
-
+.EXAMPLE
 .\Get-Office365Report.ps1 `
-    -TenantName "contoso.onmicrosoft.com" `
-    -ClientID "df4d5697-2465-49e3-90b1-d029e609e33f" `
-    -RedirectURI "urn:foo" `
-    -WorkLoad OneDrive `
-    -ReportType getOneDriveUsageStorage `
+    -TenantName "Contoso" `
+    -ClientID df4d5697-2465-49e3-90b1-d029e609e335" `
+    -RedirectURI "urn:foo" ` `
+    -WorkLoad Tenant `
+    -ReportType getOffice365ActivationCounts `
     -Period D180 `
-    -Date 2017-10-26 `
+    -Date 2017-12-25 `
     -Verbose
- 
+
+.EXAMPLE
+.\Get-Office365Report.ps1 `
+    -TenantName "Contoso" `
+    -ClientID "47fff52d-5a35-46bd-a70f-d135d5e4641f" `
+    -ClientSecret "nPoQa4rgd4FHMu5qoTge5QuXKz3KAiNwwersoXLRkWKk=" `
+    -WorkLoad SharePoint `
+    -ReportType getSharePointSiteUsageDetail  `
+    -Period D180 `
+    -Date 2017-12-25 `
+    -Verbose
+
 .PARAMETER TenantName
 Tenant name in the format contoso.onmicrosoft.com
 
@@ -27,6 +36,9 @@ AppID for the App registered in AzureAD for the purpose of accessing the reporti
 
 .PARAMETER RedirectURI
 ReplyURL for the App registered in AzureAD for the purpose of accessing the reporting API
+
+.PARAMETER ClientSecret
+Client key/secret when using a web app registered in AzureAD
 
 .PARAMETER WorKload
 Service in Office365 for which to provide report options. Used to provide a usable parameter set for the ReportType parameter
@@ -71,6 +83,13 @@ We grant You a nonexclusive, royalty-free right to use and modify the Sample Cod
 (i) to not use Our name, logo, or trademarks to market Your software product in which the Sample Code is embedded
 (ii) to include a valid copyright notice on Your software product in which the Sample Code is embedded; and 
 (iii) to indemnify, hold harmless, and defend Us and Our suppliers from and against any claims or lawsuits, including attorneys’ fees, that arise or result from the use or distribution of the Sample Code.
+#>
+
+<#
+Contributors:
+Zak Belmaachi - https://github.com/zakbelmaachi
+Damian Wiese - https://blog.damianwiese.com
+
 
 Version History:
 ## 4/18/2017 ##
@@ -100,9 +119,6 @@ getOffice365GroupsActivityUserDetail --> getOffice365GroupsActivityDetail
 
 ## 1/3/2018 ##
 1) Added support for AzureAD web app with client secret
- 
-
-#>
 [CmdletBinding()]
 Param (
     [Parameter(Mandatory=$true)]
