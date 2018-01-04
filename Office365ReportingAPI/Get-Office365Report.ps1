@@ -119,6 +119,8 @@ getOffice365GroupsActivityUserDetail --> getOffice365GroupsActivityDetail
 
 ## 1/3/2018 ##
 1) Added support for AzureAD web app with client secret
+#>
+
 [CmdletBinding()]
 Param (
     [Parameter(Mandatory=$true)]
